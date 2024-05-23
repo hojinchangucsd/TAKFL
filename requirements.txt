@@ -1,0 +1,11 @@
+python
+pytorch
+numpy
+timm
+datasets
+einops
+ffmpeg
+scipy
+torchvision
+tqdm
+transformers
