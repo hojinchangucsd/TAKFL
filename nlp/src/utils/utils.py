@@ -32,7 +32,7 @@ class Logger(object):
         pass 
 
 def split_val(train, nlp): 
-    VAL_SEED, VAL_RATIO = 42, 0.05
+    VAL_SEED, VAL_RATIO = 42, 0.01
     val_rng = np.random.default_rng(VAL_SEED)
     val_size = round(VAL_RATIO * len(train))
     shuffled_test_idx = np.arange(len(train))
