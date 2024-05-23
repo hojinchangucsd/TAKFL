@@ -12,7 +12,7 @@ from src.data import *
 from src.models import *
 from src.client import *
 from src.utils import *
-from src.utils import tune_lambda
+from src.utils import tune_lambda, eval_test, split_val, AvgWeights
 
 torch.backends.cudnn.benchmark = True
 
@@ -88,75 +88,14 @@ def main_fedhd(args):
     
     if args.dataset in ["cifar10", "cifar100"]:
         Y_train = np.array(train_ds_global.target)
-        val_size = int(500)
-        length = len(test_ds_global)
-        indices = list(range(length))
-        
-        seed=42
-        np.random.seed(seed)
-        np.random.shuffle(indices)
-        val_indices1 = indices[:val_size]
-        test_indices = indices[val_size:]
-        val_ds1 = torch.utils.data.Subset(test_ds_global, val_indices1)
-        test_ds_global = torch.utils.data.Subset(test_ds_global, test_indices)
-        
-        val_size = int(500)
-        length = len(train_ds_global)
-        indices = list(range(length))
-        seed=43
-        np.random.seed(seed)
-        np.random.shuffle(indices)
-        val_indices2 = indices[:val_size]
-        train_indices = indices[val_size:]
-        val_ds2 = torch.utils.data.Subset(train_ds_global, val_indices2)
-        train_ds_global = torch.utils.data.Subset(train_ds_global, train_indices)
-        
-        val_ds_global = torch.utils.data.ConcatDataset([val_ds1, val_ds2])
     elif args.dataset in ["cinic10"]:
         Y_train = np.array([el[1] for el in train_ds_global])
-        
-        val_size = int(13500)
-        length = len(test_ds_global)
-        indices = list(range(length))
-        
-        seed=42
-        np.random.seed(seed)
-        np.random.shuffle(indices)
-
-        val_indices = indices[:val_size]
-        test_indices = indices[val_size:]
-        val_ds_global = torch.utils.data.Subset(test_ds_global, val_indices)
-        test_ds_global = torch.utils.data.Subset(test_ds_global, test_indices)
     elif args.dataset in ["tinyimagenet"]:
         Y_train = np.array([el[1] for el in train_ds_global])
-        
-        val_size = int(2000)
-        length = len(train_ds_global)
-        indices = list(range(length))
-        
-        seed=42
-        np.random.seed(seed)
-        np.random.shuffle(indices)
-
-        val_indices = indices[:val_size]
-        train_indices = indices[val_size:]
-        val_ds_global = torch.utils.data.Subset(train_ds_global, val_indices)
-        train_ds_global = torch.utils.data.Subset(train_ds_global, train_indices)
     elif args.dataset in ["stl10"]:
         Y_train = np.array([el[1] for el in train_ds_global])
-        
-        val_size = int(100)
-        length = len(train_ds_global)
-        indices = list(range(length))
-        
-        seed=42
-        np.random.seed(seed)
-        np.random.shuffle(indices)
 
-        val_indices = indices[:val_size]
-        train_indices = indices[val_size:]
-        val_ds_global = torch.utils.data.Subset(train_ds_global, val_indices)
-        train_ds_global = torch.utils.data.Subset(train_ds_global, train_indices)
+    train_ds_global, val_ds_global = split_val(train_ds_global)
     
     partitions_train, partitions_test, partitions_train_stat, partitions_test_stat = \
         get_partitions_customD(train_ds_global, test_ds_global, args)
@@ -464,7 +403,6 @@ def main_fedhd(args):
 
         loss_train.append(loss_avg)
         loss_locals.clear()
-        gc.collect()
 
     end = time.time()
     duration = end-start

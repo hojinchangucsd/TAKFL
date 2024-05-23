@@ -18,11 +18,6 @@ from src.nlp import model as nlp_model, dataset as nlp_dataset
 import concurrent.futures
 import torch.cuda
 
-#torch.backends.cudnn.benchmark = False
-
-#torch.set_num_threads(1)
-#torch.set_num_interop_threads(1)
-
 def train_client(client, w_glob):
     client.set_state_dict(copy.deepcopy(w_glob))
     loss = client.train(is_print=False)
@@ -34,27 +29,9 @@ def main_fedavg_mh(args):
 
     print(' ')
     print('\n'.join(f'{k}={v}' for k, v in vars(args).items()))
-    #print(str(args))
     ##################################### Data partitioning section
     print('-'*40)
     print('Getting Clients Data')
-    
-    #num_users = [100, 20, 4]
-    #fracs = [0.1, 0.2, 0.5]
-    
-    # if args.arch_family == 'resnet':
-    #     archs = ['resnet8', 'resnet14', 'resnet18']
-    # elif args.arch_family == 'vgg':
-    #     archs = ['vgg7', 'vgg11', 'vgg16']
-    # elif args.arch_family == 'hetero':
-    #     #archs = ['regnetx_002', 'vgg12', 'resnet18']
-    #     #archs = ['edgenext_x_small', 'vgg12', 'resnet18']
-    #     archs = ['vgg7', 'vgg11', 'resnet18']
-        
-    #num_users = args.num_users_per_cluster
-    #archs = args.archs
-    #p_trains = args.data_per_cluster
-    #fracs = args.frac_per_cluster
     
     num_users = args.num_users
     archs = args.models
@@ -65,8 +42,6 @@ def main_fedavg_mh(args):
     print(f'archs: {archs}')
     print(f'fracs: {fracs}')
     print(f'Data ratios: {args.data_ratios}')
-    
-    #public_ds = get_distill_data(args.distill_dataset, args.datadir, args.alg, args.dataset, num_clusters)
     
     if args.nlp: 
         train_ds_global, val_ds_global, test_ds_global = nlp_dataset.get_train_val_test_ds(args)
@@ -83,8 +58,6 @@ def main_fedavg_mh(args):
         = get_dataset_global(args.dataset, args.datadir, batch_size=128,
                                             p_train=1.0, p_test=1.0, seed=args.seed)
     
-        #partitions_train, partitions_test, partitions_train_stat, partitions_test_stat = get_partitions(num_users, train_ds_global, test_ds_global, args)
-
         partitions_train, partitions_test, partitions_train_stat, partitions_test_stat = \
             get_partitions_customD(train_ds_global, test_ds_global, args)
         
@@ -99,7 +72,6 @@ def main_fedavg_mh(args):
     ################################### build model
     print('-'*40)
     print('Building models for clients')
-    #print(f'MODEL: {args.model}, Dataset: {args.dataset}')
     
     users_model = []
     net_glob = []
@@ -121,28 +93,6 @@ def main_fedavg_mh(args):
         for cn, mod in enumerate(net_glob): 
             mod.load_state_dict(initial_state_dict[cn])
         
-    #initial_state_dict = nn.DataParallel(initial_state_dict)
-    #net_glob = nn.DataParallel(net_glob)
-    #print('-'*40)
-    #print(net_glob)
-    #print('')
-    
-    #num_params_list = []
-    #for cn, mod in enumerate(net_glob): 
-    #    print(f'Model No {cn+1}')
-    #    total = 0
-    #    for name, param in mod.named_parameters():
-    #        print(name, param.size())
-    #        total += np.prod(param.size())
-    #        #print(np.array(param.data.cpu().numpy().reshape([-1])))
-    #        #print(isinstance(param.data.cpu().numpy(), np.array))
-    #    num_params_list.append(total)
-    #    print(f'total params {total}')
-    #    print('-'*40)
-        
-    #print(num_params_list)
-    #for cn in range(len(num_users)):
-    #    scale = [num_params_list[i]/num_params_list[cn] for i in range(len(num_users))]
     ################################# Initializing Clients
     print('-'*40)
     print('Initializing Clients')
@@ -229,34 +179,6 @@ def main_fedavg_mh(args):
 
         # print loss
         loss_avg = sum(loss_locals) / len(loss_locals)
-        #template = '-- Average Train loss {:.3f}'
-        #print(template.format(loss_avg))
-        
-        # jobs, results = [], []
-        # #max_len = sum(len(user) for user in idxs_users) - 4
-        # max_len = 1
-        # streams = [torch.cuda.Stream() for _ in range(max_len)]
-
-        # # Execute tasks with limited concurrency
-        # with concurrent.futures.ThreadPoolExecutor(max_workers=min(max_len, os.cpu_count() - 1)) as executor:
-        #     for i, (cn, idx) in enumerate([(cn, idx) for cn in range(len(idxs_users)) for idx in idxs_users[cn]]):
-        #         stream = streams[i % max_len]  # Select stream
-        #         #torch.cuda.synchronize()
-        #         with torch.cuda.stream(stream):
-        #             jobs.append(executor.submit(train_client, clients[cn][idx], copy.deepcopy(w_glob[cn])))
-
-        # concurrent.futures.wait(jobs)
-        # for stream in streams:
-        #     with torch.cuda.stream(stream):
-        #         torch.cuda.synchronize()
-
-        # loss_locals = [job.result() for job in jobs]
-        # e_time = time.time()
-        # # Gather results
-        # #loss_locals = results
-
-        # # print loss
-        # loss_avg = sum(loss_locals) / len(loss_locals)
         e_time = time.time()
         template = '-- Average Train loss {:.3f}, Time: {:.3f}'
         print(template.format(loss_avg, e_time-s_time))
@@ -276,56 +198,12 @@ def main_fedavg_mh(args):
 
             glob_acc_wavg[cn].append(acc)
         ####### FedAvg ####### END
-        ###### Saving Weights #######
-        #save_path = '/home/srip23/results_scalability/fedavg_mh/cinic10/niid-labeldir/0.5/Model-4-L'
-        #model_name = 'logs_7Dev_Archs_resnet10_xxs_resnet10_s_resnet10_m_resnet10_l_resnet10_resnet18_resnet50_{:s}.pt'
-        #def get_name(round, name, who): 
-        #    return model_name.format(f'rounds{round}_global-type-{name}_{who}')
-        # 
-        #if iteration+1 in [1,5,10,20]:
-        #    for cn in range(len(num_users)):
-        #        if cn == 4: 
-        #            name = get_name(iteration+1, cn, f'global')
-        #            torch.save(net_glob[cn].state_dict(), os.path.join(save_path,name))
-        #        for cc in range(num_users[cn]): 
-        #            if cn == 4: 
-        #                name = get_name(iteration+1, cn, f'client-{cc}')
-        #                torch.save(clients[cn][cc].net.state_dict(), os.path.join(save_path,name))
-
-        ##### Saving Weights #######
         
         print("-- Results:")
         for cn in range(len(num_users)):
             template = "--[Cluster {:.1f}]: {}, Global Acc Wavg: {:.2f}, Best: {:.2f}"
             print(template.format(cn, archs[cn], glob_acc_wavg[cn][-1], 
                                 np.max(glob_acc_wavg[cn])))
-
-        #print_flag = False
-        ## if iteration+1 in [int(0.5*args.rounds), int(0.8*args.rounds)]:
-        ##     print_flag = True
-#
-        #if print_flag:
-        #    print('*'*25)
-        #    print(f'Check Point @ Round {iteration+1} --------- {int((iteration+1)/args.rounds*100)}% Completed')
-        #    temp_acc = []
-        #    temp_best_acc = []
-        #    for cn in range(len(num_users)):
-        #        for k in range(num_users[cn]):
-        #            sys.stdout.flush()
-        #            loss, acc = clients[cn][k].eval_test()
-        #            clients_local_acc[cn][k].append(acc)
-        #            temp_acc.append(clients_local_acc[cn][k][-1])
-        #            temp_best_acc.append(np.max(clients_local_acc[cn][k]))
-#
-        #            template = ("Client {:3d}, current_acc {:3.2f}, best_acc {:3.2f}")
-        #            print(template.format(k, clients_local_acc[cn][k][-1], np.max(clients_local_acc[cn][k])))
-#
-        #    #print('*'*25)
-        #    template = ("-- Avg Local Acc: {:3.2f}")
-        #    print(template.format(np.mean(temp_acc)))
-        #    template = ("-- Avg Best Local Acc: {:3.2f}")
-        #    print(template.format(np.mean(temp_best_acc)))
-        #    print('*'*25)
 
         loss_train.append(loss_avg)
 
@@ -342,22 +220,6 @@ def main_fedavg_mh(args):
     end = time.time()
     duration = end-start
     print('-'*40)
-    ############################### Testing Local Results
-    #print('*'*25)
-    #print('---- Testing Final Local Results ----')
-    #temp_acc = [[] for _ in range(len(num_users))]
-    #temp_best_acc = [[] for _ in range(len(num_users))]
-    #for cn in range(len(num_users)):
-    #    for k in range(num_users[cn]):
-    #        sys.stdout.flush()
-    #        loss, acc = clients[cn][k].eval_test()
-    #        clients_local_acc[cn][k].append(acc)
-    #        temp_acc[cn].append(clients_local_acc[cn][k][-1].numpy())
-    #        temp_best_acc[cn].append(np.max(clients_local_acc[cn][k]))
-#
-    #        template = ("Client {:3d}, Final_acc {:3.2f}, best_acc {:3.2f} \n")
-    #        print(template.format(k, clients_local_acc[cn][k][-1], np.max(clients_local_acc[cn][k])))
-    #print('*'*25)
     ############################### FedAvg Final Results
     print('-'*40)
     print('FINAL RESULTS')
@@ -371,12 +233,6 @@ def main_fedavg_mh(args):
         template = "-- Global Best Acc: {:.2f}"
         print(template.format(np.max(glob_acc_wavg[cn])))
 
-        #template = ("-- Avg Local Acc: {:3.2f}")
-        #print(template.format(np.mean(temp_acc[cn])))
-#
-        #template = ("-- Avg Best Local Acc: {:3.2f}")
-        #print(template.format(np.mean(temp_best_acc[cn])))
-
         print(f'-- FL Time: {duration/60:.2f} minutes')
     print('-'*40)
     
@@ -388,14 +244,6 @@ def main_fedavg_mh(args):
         kk = int(num_users[cn]*fracs[cn])
         avg_final_glob.append(np.mean(glob_acc_wavg[cn][-kk:]))
         best_glob.append(np.max(glob_acc_wavg[cn]))
-    
-    #temp_acc = [item for sublist in temp_acc for item in sublist]
-    #temp_best_acc = [item for sublist in temp_best_acc for item in sublist]
-    #print(temp_acc)
-    #print(temp_best_acc)
-    #
-    #avg_final_local = np.mean(temp_acc)
-    #avg_best_local = np.mean(temp_best_acc)
 
     return (glob_acc_wavg, final_glob, avg_final_glob, best_glob, duration)
 
@@ -403,14 +251,11 @@ def run_fedavg_mh(args, fname):
     alg_name = 'FedAvg-MH'
 
     seeds = [2023, 2024, 2022, 2021]
-    #seeds = [102023, 552024, 912022, 212021]
     
     exp_glob_acc_wavg = []
     exp_final_glob=[]
     exp_avg_final_glob=[]
     exp_best_glob=[]
-    #exp_avg_final_local=[]
-    #exp_avg_best_local=[]
     exp_fl_time=[]
 
     for trial in range(args.ntrials):
@@ -425,8 +270,6 @@ def run_fedavg_mh(args, fname):
         exp_final_glob.append(final_glob)
         exp_avg_final_glob.append(avg_final_glob)
         exp_best_glob.append(best_glob)
-        #exp_avg_final_local.append(avg_final_local)
-        #exp_avg_best_local.append(avg_best_local)
         exp_fl_time.append(duration/60)
 
         print('*'*40)
@@ -444,12 +287,6 @@ def run_fedavg_mh(args, fname):
         template = "-- Global Best Acc: {}"
         r = [float(f'{item:.2f}') for item in exp_best_glob[-1]]
         print(template.format(r))
-
-        #template = ("-- Avg Final Local Acc: {:3.2f}")
-        #print(template.format(exp_avg_final_local[-1]))
-#
-        #template = ("-- Avg Best Local Acc: {:3.2f}")
-        #print(template.format(exp_avg_best_local[-1]))
 
         print(f'-- FL Time: {exp_fl_time[-1]:.2f} minutes')
 
@@ -471,12 +308,6 @@ def run_fedavg_mh(args, fname):
     r1 = [float(f'{item:.2f}') for item in np.mean(exp_best_glob, axis=0)]
     r2 = [float(f'{item:.2f}') for item in np.std(exp_best_glob, axis=0)]
     print(template.format(r1, r2))
-
-    #template = ("-- Avg Final Local Acc: {:3.2f} +- {:.2f}")
-    #print(template.format(np.mean(exp_avg_final_local), np.std(exp_avg_final_local)))
-#
-    #template = ("-- Avg Best Local Acc: {:3.2f} +- {:.2f}")
-    #print(template.format(np.mean(exp_avg_best_local), np.std(exp_avg_best_local)))
 
     print(f'-- FL Time: {np.mean(exp_fl_time):.2f} minutes')
 
@@ -500,17 +331,10 @@ def run_fedavg_mh(args, fname):
         r2 = [float(f'{item:.2f}') for item in np.std(exp_best_glob, axis=0)]
         print(template.format(r1, r2), file=text_file)
 
-        #template = ("-- Avg Final Local Acc: {:3.2f} +- {:.2f}")
-        #print(template.format(np.mean(exp_avg_final_local), np.std(exp_avg_final_local)), file=text_file)
-#
-        #template = ("-- Avg Best Local Acc: {:3.2f} +- {:.2f}")
-        #print(template.format(np.mean(exp_avg_best_local), np.std(exp_avg_best_local)), file=text_file)
-
         print(f'-- FL Time: {np.mean(exp_fl_time):.2f} minutes', file=text_file)
 
         print('*'*40)
 
     print('Saving Global Accuracy')
     np.save(fname+'_glob_acc_wavg.npy', np.array(exp_glob_acc_wavg))
-    #np.load(fname+'_glob_acc_wavg.npy')
     return

@@ -15,20 +15,6 @@ from src.utils import *
 from src.utils.utils import set_seed
 from src.nlp import dataset as nlp_dataset, model as nlp_model
 
-#torch.backends.cudnn.benchmark = True
-
-#def inference(public_ds, net, args):
-#    public_dl = torch.utils.data.DataLoader(public_ds, batch_size=256, shuffle=False, drop_last=False)
-#    
-#    #net.eval()
-#    outs = []
-#    for data, _,_,_ in public_dl:
-#        data = data.to(args.device)
-#        out = net(data)
-#        outs.append(out.detach().cpu())
-#
-#    outputs = torch.cat(outs)#.numpy()
-#    return outputs
 
 def main_fedet(args):
 
@@ -36,27 +22,9 @@ def main_fedet(args):
 
     print(' ')
     print('\n'.join(f'{k}={v}' for k, v in vars(args).items()))
-    #print(str(args))
     ##################################### Data partitioning section
     print('-'*40)
     print('Getting Clients Data')
-    
-    # num_users = [100, 20, 4]
-    # fracs = [0.1, 0.2, 0.5]
-    
-    # if args.arch_family == 'resnet':
-    #     archs = ['resnet8', 'resnet14', 'resnet18']
-    # elif args.arch_family == 'vgg':
-    #     archs = ['vgg7', 'vgg11', 'vgg16']
-    # elif args.arch_family == 'hetero':
-    #     #archs = ['vgg7', 'densenet121', 'resnet18']
-    #     #archs = ['edgenext_x_small', 'vgg12', 'resnet18']
-    #     archs = ['vgg7', 'vgg11', 'resnet18']
-    
-    #num_users = args.num_users_per_cluster
-    #archs = args.archs
-    #p_trains = args.data_per_cluster
-    #fracs = args.frac_per_cluster
     
     num_users = args.num_users
     archs = args.models
@@ -67,28 +35,6 @@ def main_fedet(args):
     print(f'archs: {archs}')
     print(f'fracs: {fracs}')
     print(f'Data ratios: {args.data_ratios}')
-    
-    # public_train_ds, public_test_ds, _, \
-    # _ = get_dataset_global(args.distill_dataset, args.datadir, batch_size=128,
-    #                                     p_train=1.0, p_test=1.0, seed=args.seed)
-    # if args.distill_dataset == "imagenet":
-    #     subset100 = np.array([], dtype='int')
-    #     tar = np.array(public_train_ds.targets)
-    #     np.random.seed(2023)
-    #     labels = np.random.choice(np.arange(1000), size=100, replace=False)
-    #     for i in labels:
-    #         subset100 = np.hstack([subset100, np.where(tar==i)[0][0:500]])
-    #     public_train_ds = torch.utils.data.Subset(public_train_ds, subset100)
-    #     soft_t = np.random.randn(len(public_train_ds), 100)
-    #     hard_t = np.random.randn(len(public_train_ds), 1)
-    #     public_ds = DatasetKD_ET(public_train_ds, logits=soft_t, labels=hard_t)
-    # elif args.distill_dataset == "cifar100":
-    #     print('CIFAR-100')
-    #     p_data = torch.utils.data.ConcatDataset([public_train_ds, public_test_ds])
-    #     soft_t = np.random.randn(len(p_data), 10)
-    #     hard_t = np.random.randn(len(p_data), 1)
-    #     public_ds = DatasetKD_ET(p_data, logits=soft_t, labels=hard_t)
-    #     #print(len(public_ds))
     
     if args.nlp: 
         public_ds = nlp_dataset.get_public_ds(args)
@@ -138,12 +84,6 @@ def main_fedet(args):
         
         for cn, mod in enumerate(net_glob): 
             mod.load_state_dict(initial_state_dict[cn])
-        
-    #initial_state_dict = nn.DataParallel(initial_state_dict)
-    #net_glob = nn.DataParallel(net_glob)
-    #print('-'*40)
-    #print(net_glob)
-    #print('')
 
     num_params_list = []
     for cn, mod in enumerate(net_glob): 
@@ -156,9 +96,6 @@ def main_fedet(args):
         print(f'total params {total}')
         print('-'*40)
         
-    #print(num_params_list)
-    #for cn in range(len(num_users)):
-    #    scale = [num_params_list[i]/num_params_list[cn] for i in range(len(num_users))]
     ################################# Initializing Clients
     print('-'*40)
     print('Initializing Clients')
@@ -220,7 +157,6 @@ def main_fedet(args):
     start = time.time()
     
     loss_train = []
-    #clients_local_acc = {i:{j:[] for j in range(num_users[i])} for i in range(len(num_users))}
     w_locals, loss_locals = [], []
     glob_acc_wavg = [[] for _ in range(len(num_users))]
     glob_acc_kd = [[] for _ in range(len(num_users))]
@@ -242,7 +178,6 @@ def main_fedet(args):
         s_time = time.time()
         for cn in range(len(idxs_users)):
             for idx in idxs_users[cn]:
-                #print(f'cn {cn} \n idx {idx}')
                 clients[cn][idx].set_state_dict(copy.deepcopy(w_glob[cn]))
 
                 loss = clients[cn][idx].train()
@@ -356,39 +291,9 @@ def main_fedet(args):
         for cn in range(len(num_users)):
             template = "--[Cluster {:.1f}]: {}, Global Acc KD: {:.2f}, Best: {:.2f}"
             print(template.format(cn, archs[cn], glob_acc_kd[cn][-1], np.max(glob_acc_kd[cn])))
-            
-        #print_flag = False
-        ## if iteration+1 in [int(0.5*args.rounds)]:
-        ##     print_flag = True
-#
-        #if print_flag:
-        #    print('*'*25)
-        #    print(f'Check Point @ Round {iteration+1} --------- {int((iteration+1)/args.rounds*100)}% Completed')
-        #    temp_acc = []
-        #    temp_best_acc = []
-        #    for cn in range(len(num_users)):
-        #        for k in range(num_users[cn]):
-        #            sys.stdout.flush()
-        #            loss, acc = clients[cn][k].eval_test()
-        #            clients_local_acc[cn][k].append(acc)
-        #            temp_acc.append(clients_local_acc[cn][k][-1])
-        #            temp_best_acc.append(np.max(clients_local_acc[cn][k]))
-#
-        #            template = ("Client {:3d}, current_acc {:3.2f}, best_acc {:3.2f}")
-        #            print(template.format(k, clients_local_acc[cn][k][-1], np.max(clients_local_acc[cn][k])))
-#
-        #    #print('*'*25)
-        #    template = ("-- Avg Local Acc: {:3.2f}")
-        #    print(template.format(np.mean(temp_acc)))
-        #    template = ("-- Avg Best Local Acc: {:3.2f}")
-        #    print(template.format(np.mean(temp_best_acc)))
-        #    print('*'*25)
 
         loss_train.append(loss_avg)
-        ## clear the placeholders for the next round
         loss_locals.clear()
-        ## calling garbage collector
-        #gc.collect()
 
         iter_end_time = time.time()
 
@@ -398,23 +303,6 @@ def main_fedet(args):
     end = time.time()
     duration = end-start
     print('-'*40)
-    ############################### Testing Local Results
-    #print('*'*25)
-    #print('---- Testing Final Local Results ----')
-    #temp_acc = [[] for _ in range(len(num_users))]
-    #temp_best_acc = [[] for _ in range(len(num_users))]
-    #for cn in range(len(num_users)):
-    #    for k in range(num_users[cn]):
-    #        sys.stdout.flush()
-    #        loss, acc = clients[cn][k].eval_test()
-    #        clients_local_acc[cn][k].append(acc)
-    #        temp_acc[cn].append(clients_local_acc[cn][k][-1].numpy())
-    #        temp_best_acc[cn].append(np.max(clients_local_acc[cn][k]))
-#
-    #        template = ("Client {:3d}, Final_acc {:3.2f}, best_acc {:3.2f} \n")
-    #        print(template.format(k, clients_local_acc[cn][k][-1], np.max(clients_local_acc[cn][k])))
-    #        
-    #print('*'*25)
     ############################### FedAvg Final Results
     print('-'*40)
     print('FINAL RESULTS')
@@ -445,14 +333,6 @@ def main_fedet(args):
         kk = int(num_users[cn]*fracs[cn])
         avg_final_glob.append(np.mean(glob_acc_kd[cn][-kk:]))
         best_glob.append(np.max(glob_acc_kd[cn]))
-    
-    #temp_acc = [item for sublist in temp_acc for item in sublist]
-    #temp_best_acc = [item for sublist in temp_best_acc for item in sublist]
-    #print(temp_acc)
-    #print(temp_best_acc)
-    #
-    #avg_final_local = np.mean(temp_acc)
-    #avg_best_local = np.mean(temp_best_acc)
 
     return (glob_acc_wavg, glob_acc_kd, final_glob, avg_final_glob, best_glob, duration)
 
@@ -484,8 +364,6 @@ def run_fedet(args, fname):
         exp_final_glob.append(final_glob)
         exp_avg_final_glob.append(avg_final_glob)
         exp_best_glob.append(best_glob)
-       #exp_avg_final_local.append(avg_final_local)
-       #exp_avg_best_local.append(avg_best_local)
         exp_fl_time.append(duration/60)
 
         print('*'*40)
@@ -503,12 +381,6 @@ def run_fedet(args, fname):
         template = "-- Global Best Acc: {}"
         r = [float(f'{item:.2f}') for item in exp_best_glob[-1]]
         print(template.format(r))
-
-        #template = ("-- Avg Final Local Acc: {:3.2f}")
-        #print(template.format(exp_avg_final_local[-1]))
-#
-        #template = ("-- Avg Best Local Acc: {:3.2f}")
-        #print(template.format(exp_avg_best_local[-1]))
 
         print(f'-- FL Time: {exp_fl_time[-1]:.2f} minutes')
 
@@ -530,12 +402,6 @@ def run_fedet(args, fname):
     r1 = [float(f'{item:.2f}') for item in np.mean(exp_best_glob, axis=0)]
     r2 = [float(f'{item:.2f}') for item in np.std(exp_best_glob, axis=0)]
     print(template.format(r1, r2))
-
-    #template = ("-- Avg Final Local Acc: {:3.2f} +- {:.2f}")
-    #print(template.format(np.mean(exp_avg_final_local), np.std(exp_avg_final_local)))
-#
-    #template = ("-- Avg Best Local Acc: {:3.2f} +- {:.2f}")
-    #print(template.format(np.mean(exp_avg_best_local), np.std(exp_avg_best_local)))
 
     print(f'-- FL Time: {np.mean(exp_fl_time):.2f} minutes')
 
@@ -559,12 +425,6 @@ def run_fedet(args, fname):
         r2 = [float(f'{item:.2f}') for item in np.std(exp_best_glob, axis=0)]
         print(template.format(r1, r2), file=text_file)
 
-        #template = ("-- Avg Final Local Acc: {:3.2f} +- {:.2f}")
-        #print(template.format(np.mean(exp_avg_final_local), np.std(exp_avg_final_local)), file=text_file)
-#
-        #template = ("-- Avg Best Local Acc: {:3.2f} +- {:.2f}")
-        #print(template.format(np.mean(exp_avg_best_local), np.std(exp_avg_best_local)), file=text_file)
-
         print(f'-- FL Time: {np.mean(exp_fl_time):.2f} minutes', file=text_file)
 
         print('*'*40)
@@ -572,5 +432,4 @@ def run_fedet(args, fname):
     print('Saving Global Accuracy')
     np.save(fname+'_glob_acc_wavg.npy', np.array(exp_glob_acc_wavg))
     np.save(fname+'_glob_acc_kd.npy', np.array(exp_glob_acc_kd))
-    #np.load(fname+'_glob_acc_kd.npy')
     return

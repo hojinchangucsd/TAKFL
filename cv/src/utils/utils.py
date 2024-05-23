@@ -18,6 +18,16 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import datasets, transforms
 import torch.nn.init as init
 
+def split_val(train): 
+    VAL_SEED, VAL_RATIO = 42, 0.05
+    val_rng = np.random.default_rng(VAL_SEED)
+    val_size = round(VAL_RATIO * len(train))
+    shuffled_test_idx = np.arange(len(train))
+    val_rng.shuffle(shuffled_test_idx)
+    val = torch.utils.Data.Subset(train, shuffled_test_idx[:val_size])
+    train = torch.utils.Data.Subset(train, shuffled_test_idx[val_size:])
+    return val, train
+
 
 class Logger(object):
     def __init__(self, fname):

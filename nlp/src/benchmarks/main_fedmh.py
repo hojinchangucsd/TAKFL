@@ -20,60 +20,15 @@ import torch.cuda
 from torch.cuda.amp import GradScaler, autocast
 from contextlib import nullcontext
 
-#torch.backends.cudnn.benchmark = True
-
-#def train_client(client, w_glob):
-#    client.set_state_dict(copy.deepcopy(w_glob))
-#    loss = client.train(nlp=args.nlp)
-#    return loss
-
-#def inference(public_ds, net, args):
-#    public_dl = torch.utils.data.DataLoader(public_ds, batch_size=256, shuffle=False, drop_last=False)
-#    
-#    #net.eval()
-#    outs = []
-#    for data, _,_,_ in public_dl:
-#        data = data.to(args.device)
-#        out = net(data)
-#        outs.append(out.detach().cpu())
-#
-#    outputs = torch.cat(outs)#.numpy()
-#    return outputs
-#
-#def perform_inference(client, dataset, stream):
-#    with torch.cuda.stream(stream):
-#        logits = client.inference(dataset)
-#        torch.cuda.synchronize()  # Ensure completion within the stream
-#    return logits
-
 def main_fedmh(args):
 
     path = args.path
 
     print(' ')
     print('\n'.join(f'{k}={v}' for k, v in vars(args).items()))
-    #print(str(args))
     ##################################### Data partitioning section
     print('-'*40)
     print('Getting Clients Data')
-    
-    # num_users = [100, 20, 4]
-    # fracs = [0.1, 0.2, 0.5]
-    
-    # if args.arch_family == 'resnet':
-    #     archs = ['resnet8', 'resnet14', 'resnet18']
-    # elif args.arch_family == 'vgg':
-    #     archs = ['vgg7', 'vgg11', 'vgg16']
-    # elif args.arch_family == 'hetero':
-    #     #archs = ['vgg7', 'densenet121', 'resnet18']
-    #     #archs = ['edgenext_x_small', 'vgg12', 'resnet18']
-    #     archs = ['vgg7', 'vgg11', 'resnet18']
-    
-    #num_users = args.num_users_per_cluster
-    #archs = args.archs
-    #p_trains = args.data_per_cluster
-    #fracs = args.frac_per_cluster
-    
 
     num_users = args.num_users
     archs = args.models
@@ -84,24 +39,6 @@ def main_fedmh(args):
     print(f'archs: {archs}')
     print(f'fracs: {fracs}')
     print(f'Data ratios: {args.data_ratios}')
-    
-    # public_train_ds, public_test_ds, _, \
-    # _ = get_dataset_global(args.distill_dataset, args.datadir, batch_size=128,
-    #                                     p_train=1.0, p_test=1.0, seed=args.seed)
-    # if args.distill_dataset == "imagenet":
-    #     subset100 = np.array([], dtype='int')
-    #     tar = np.array(public_train_ds.targets)
-    #     np.random.seed(2023)
-    #     labels = np.random.choice(np.arange(1000), size=100, replace=False)
-    #     for i in labels:
-    #         subset100 = np.hstack([subset100, np.where(tar==i)[0][0:500]])
-    #     public_train_ds = torch.utils.data.Subset(public_train_ds, subset100)
-    #     soft_t = np.random.randn(len(public_train_ds), 100)
-    #     public_ds = DatasetKD(public_train_ds, soft_t)
-    # else:
-    #     p_data = torch.utils.data.ConcatDataset([public_train_ds, public_test_ds])
-    #     soft_t = np.random.randn(len(p_data), 10)
-    #     public_ds = DatasetKD(p_data, soft_t)
 
     if args.nlp: 
         public_ds = nlp_dataset.get_public_ds(args)
@@ -120,8 +57,7 @@ def main_fedmh(args):
         train_ds_global, test_ds_global, train_dl_global, test_dl_global \
         = get_dataset_global(args.dataset, args.datadir, batch_size=128,
                                             p_train=1.0, p_test=1.0, seed=args.seed)
-        #partitions_train, partitions_test, partitions_train_stat, partitions_test_stat = get_partitions(num_users, train_ds_global, test_ds_global, args)
-
+        
         partitions_train, partitions_test, partitions_train_stat, partitions_test_stat = \
             get_partitions_customD(train_ds_global, test_ds_global, args)
     
@@ -152,29 +88,17 @@ def main_fedmh(args):
         
         for cn, mod in enumerate(net_glob): 
             mod.load_state_dict(initial_state_dict[cn])
-        
-    #initial_state_dict = nn.DataParallel(initial_state_dict)
-    #net_glob = nn.DataParallel(net_glob)
-    #print('-'*40)
-    #print(net_glob)
-    #print('')
-    
+
     num_params_list = []
     for cn, mod in enumerate(net_glob): 
         print(f'Model No {cn+1}')
         total = 0
         for name, param in mod.named_parameters():
-            #print(name, param.size())
             total += np.prod(param.size())
-            #print(np.array(param.data.cpu().numpy().reshape([-1])))
-            #print(isinstance(param.data.cpu().numpy(), np.array))
         num_params_list.append(total)
         print(f'total params {total}')
         print('-'*40)
-        
-    #print(num_params_list)
-    #for cn in range(len(num_users)):
-    #    scale = [num_params_list[i]/num_params_list[cn] for i in range(len(num_users))]
+
     ################################# Initializing Clients
     print('-'*40)
     print('Initializing Clients')
@@ -239,7 +163,6 @@ def main_fedmh(args):
     start = time.time()
     
     loss_train = []
-    #clients_local_acc = {i:{j:[] for j in range(num_users[i])} for i in range(len(num_users))}
     w_locals, loss_locals = [], []
     glob_acc_wavg = [[] for _ in range(len(num_users))]
     glob_acc_kd = [[] for _ in range(len(num_users))]
@@ -261,39 +184,12 @@ def main_fedmh(args):
         s_time = time.time()
         for cn in range(len(idxs_users)):
             for idx in idxs_users[cn]:
-                #print(f'cn {cn} \n idx {idx}')
                 clients[cn][idx].set_state_dict(copy.deepcopy(w_glob[cn]))
 
                 loss = clients[cn][idx].train()
                 loss_locals.append(copy.deepcopy(loss))     
-        
-        # jobs, results = [], []
-        # #max_len = sum(len(user) for user in idxs_users) - 4
-        # max_len = 1
-        # streams = [torch.cuda.Stream() for _ in range(max_len)]
-
-        # # Execute tasks with limited concurrency
-        # with concurrent.futures.ThreadPoolExecutor(max_workers=min(max_len, os.cpu_count() - 1)) as executor:
-        #     for i, (cn, idx) in enumerate([(cn, idx) for cn in range(len(idxs_users)) for idx in idxs_users[cn]]):
-        #         stream = streams[i % max_len]  # Select stream
-        #         with torch.cuda.stream(stream):
-        #             jobs.append(executor.submit(train_client, clients[cn][idx], copy.deepcopy(w_glob[cn])))
-
-        # concurrent.futures.wait(jobs)
-        # for stream in streams:
-        #     with torch.cuda.stream(stream):
-        #         torch.cuda.synchronize()
-
-        # loss_locals = [job.result() for job in jobs]
         e_time = time.time()
 
-        # print loss
-        # The code snippet provided seems to be calculating the average of the values in
-        # the `loss_locals` list in Python. It is summing up all the values in the
-        # `loss_locals` list using the `sum()` function and then dividing it by the length
-        # of the `loss_locals` list using the `len()` function to get the average. The
-        # result is then being formatted into a string with two placeholders for the
-        # average train loss and time.
         loss_avg = sum(loss_locals) / len(loss_locals)
         template = '-- Average Train loss {:.3f}, Time: {:.3f}'
         print(template.format(loss_avg, e_time-s_time))
@@ -321,42 +217,12 @@ def main_fedmh(args):
             for idx in idxs_users[cn]:
                 logits_locals.append(clients[cn][idx].inference(public_ds))
             torch.cuda.empty_cache()
-                #print(f'Device {cn}, client {idx}, logit shape {logits_locals[-1].shape}')
         
         teacher_logits = torch.mean(torch.stack(logits_locals), dim=0)
         public_ds.set_logits(teacher_logits)
         e_time = time.time()
         print(f'Inference & Logit Avg done: {e_time-s_time:.2f}')
         ###### Logits Avg #######
-        
-        # ###### Parallel Inference ######
-        # # Gather all logits
-        # s_time = time.time()
-        # streams = [torch.cuda.Stream() for _ in range(max_len)]
-        
-        # jobs = []
-        # with concurrent.futures.ThreadPoolExecutor(max_workers=min(max_len, os.cpu_count() - 1)) as executor:
-        #     # Process each client group (cn)
-        #     for cn in range(len(num_users)):
-        #         for idx in idxs_users[cn]:
-        #             stream = streams[idx % max_len]  # Select stream
-        #             jobs.append(executor.submit(perform_inference, clients[cn][idx], public_ds, stream))
-                
-        # # Wait for all jobs within the group to complete
-        # concurrent.futures.wait(jobs)
-        # for stream in streams:
-        #     with torch.cuda.stream(stream):
-        #         torch.cuda.synchronize()
-        
-        # # Gather logits for each client group
-        # logits_locals = [job.result().clone().detach() for job in jobs]
-        # teacher_logits = torch.mean(torch.stack(logits_locals), dim=0)
-
-        # public_ds.set_logits(teacher_logits)
-
-        # e_time = time.time()
-        # print(f'Inference & Logit Avg done: {e_time-s_time:.2f}')
-        # ###### Parallel Inference ######
         
         ##### Global Model KD #####
         for cn in range(len(num_users)):
@@ -392,7 +258,6 @@ def main_fedmh(args):
 
                         kd_loss = kl_criterion(F.log_softmax(logits_student/T, dim=1), F.softmax(teacher_logits/T, dim=1))
                     
-                        #kd_loss = mse_criterion(F.softmax(logits_student/T, dim=1), F.softmax(teacher_logits/T, dim=1))/2
                         loss = (T**2) * kd_loss
 
                     optimizer.zero_grad()
@@ -414,34 +279,6 @@ def main_fedmh(args):
             template = "--[Cluster {:.1f}]: {}, Global Acc Wavg: {:.2f}, After KD: {:.2f}, Best: {:.2f}"
             print(template.format(cn, archs[cn], glob_acc_wavg[cn][-1], glob_acc_kd[cn][-1], 
                                 np.max(glob_acc_kd[cn])))
-            
-        
-        #print_flag = False
-        ## if iteration+1 in [int(10*args.rounds)]:
-        ##     print_flag = True
-#
-        #if print_flag:
-        #    print('*'*25)
-        #    print(f'Check Point @ Round {iteration+1} --------- {int((iteration+1)/args.rounds*100)}% Completed')
-        #    temp_acc = []
-        #    temp_best_acc = []
-        #    for cn in range(len(num_users)):
-        #        for k in range(num_users[cn]):
-        #            sys.stdout.flush()
-        #            acc = clients[cn][k].eval_test()
-        #            clients_local_acc[cn][k].append(acc)
-        #            temp_acc.append(clients_local_acc[cn][k][-1])
-        #            temp_best_acc.append(np.max(clients_local_acc[cn][k]))
-#
-        #            template = ("Client {:3d}, current_acc {:3.2f}, best_acc {:3.2f}")
-        #            print(template.format(k, clients_local_acc[cn][k][-1], np.max(clients_local_acc[cn][k])))
-#
-        #    #print('*'*25)
-        #    template = ("-- Avg Local Acc: {:3.2f}")
-        #    print(template.format(np.mean(temp_acc)))
-        #    template = ("-- Avg Best Local Acc: {:3.2f}")
-        #    print(template.format(np.mean(temp_best_acc)))
-        #    print('*'*25)
 
         loss_train.append(loss_avg)
 
@@ -457,23 +294,6 @@ def main_fedmh(args):
     end = time.time()
     duration = end-start
     print('-'*40)
-    ############################### Testing Local Results
-    #print('*'*25)
-    #print('---- Testing Final Local Results ----')
-    #temp_acc = [[] for _ in range(len(num_users))]
-    #temp_best_acc = [[] for _ in range(len(num_users))]
-    #for cn in range(len(num_users)):
-    #    for k in range(num_users[cn]):
-    #        sys.stdout.flush()
-    #        acc = clients[cn][k].eval_test()
-    #        clients_local_acc[cn][k].append(acc)
-    #        temp_acc[cn].append(clients_local_acc[cn][k][-1].numpy())
-    #        temp_best_acc[cn].append(np.max(clients_local_acc[cn][k]))
-#
-    #        template = ("Client {:3d}, Final_acc {:3.2f}, best_acc {:3.2f} \n")
-    #        print(template.format(k, clients_local_acc[cn][k][-1], np.max(clients_local_acc[cn][k])))
-#
-    #print('*'*25)
     ############################### FedAvg Final Results
     print('-'*40)
     print('FINAL RESULTS')
@@ -486,13 +306,6 @@ def main_fedmh(args):
 
         template = "-- Global Best Acc: {:.2f}, After: {:.2f}"
         print(template.format(np.max(glob_acc_wavg[cn]), np.max(glob_acc_kd[cn])))
-
-        #template = ("-- Avg Local Acc: {:2.2f}")
-        #print(template.format(np.mean(temp_acc[cn])))
-#
-        #template = ("-- Avg Best Local Acc: {:2.2f}")
-        #print(template.format(np.mean(temp_best_acc[cn])))
-
         print(f'-- FL Time: {duration/60:.2f} minutes')
     print('-'*40)
     
@@ -504,14 +317,6 @@ def main_fedmh(args):
         kk = int(num_users[cn]*fracs[cn])
         avg_final_glob.append(np.mean(glob_acc_kd[cn][-kk:]))
         best_glob.append(np.max(glob_acc_kd[cn]))
-    
-    #temp_acc = [item for sublist in temp_acc for item in sublist]
-    #temp_best_acc = [item for sublist in temp_best_acc for item in sublist]
-    #print(temp_acc)
-    #print(temp_best_acc)
-    #
-    #avg_final_local = np.mean(temp_acc)
-    #avg_best_local = np.mean(temp_best_acc)
 
     return (glob_acc_wavg, glob_acc_kd, final_glob, avg_final_glob, best_glob, duration)
 
@@ -519,15 +324,12 @@ def run_fedmh(args, fname):
     alg_name = 'FedMH'
 
     seeds = [2023, 2024, 2022, 2021]
-    #seeds = [102023, 552024, 912022, 212021]
     
     exp_glob_acc_wavg = []
     exp_glob_acc_kd = []
     exp_final_glob=[]
     exp_avg_final_glob=[]
     exp_best_glob=[]
-    #exp_avg_final_local=[]
-    #exp_avg_best_local=[]
     exp_fl_time=[]
 
     for trial in range(args.ntrials):
@@ -544,8 +346,6 @@ def run_fedmh(args, fname):
         exp_final_glob.append(final_glob)
         exp_avg_final_glob.append(avg_final_glob)
         exp_best_glob.append(best_glob)
-        #exp_avg_final_local.append(avg_final_local)
-        #exp_avg_best_local.append(avg_best_local)
         exp_fl_time.append(duration/60)
 
         print('*'*40)
@@ -563,12 +363,6 @@ def run_fedmh(args, fname):
         template = "-- Global Best Acc: {}"
         r = [float(f'{item:.2f}') for item in exp_best_glob[-1]]
         print(template.format(r))
-
-        #template = ("-- Avg Final Local Acc: {:3.2f}")
-        #print(template.format(exp_avg_final_local[-1]))
-#
-        #template = ("-- Avg Best Local Acc: {:3.2f}")
-        #print(template.format(exp_avg_best_local[-1]))
 
         print(f'-- FL Time: {exp_fl_time[-1]:.2f} minutes')
 
@@ -590,12 +384,6 @@ def run_fedmh(args, fname):
     r1 = [float(f'{item:.2f}') for item in np.mean(exp_best_glob, axis=0)]
     r2 = [float(f'{item:.2f}') for item in np.std(exp_best_glob, axis=0)]
     print(template.format(r1, r2))
-
-    #template = ("-- Avg Final Local Acc: {:3.2f} +- {:.2f}")
-    #print(template.format(np.mean(exp_avg_final_local), np.std(exp_avg_final_local)))
-#
-    #template = ("-- Avg Best Local Acc: {:3.2f} +- {:.2f}")
-    #print(template.format(np.mean(exp_avg_best_local), np.std(exp_avg_best_local)))
 
     print(f'-- FL Time: {np.mean(exp_fl_time):.2f} minutes')
 
@@ -619,12 +407,6 @@ def run_fedmh(args, fname):
         r2 = [float(f'{item:.2f}') for item in np.std(exp_best_glob, axis=0)]
         print(template.format(r1, r2), file=text_file)
 
-        #template = ("-- Avg Final Local Acc: {:3.2f} +- {:.2f}")
-        #print(template.format(np.mean(exp_avg_final_local), np.std(exp_avg_final_local)), file=text_file)
-#
-        #template = ("-- Avg Best Local Acc: {:3.2f} +- {:.2f}")
-        #print(template.format(np.mean(exp_avg_best_local), np.std(exp_avg_best_local)), file=text_file)
-
         print(f'-- FL Time: {np.mean(exp_fl_time):.2f} minutes', file=text_file)
 
         print('*'*40)
@@ -632,5 +414,4 @@ def run_fedmh(args, fname):
     print('Saving Global Accuracy')
     np.save(fname+'_glob_acc_wavg.npy', np.array(exp_glob_acc_wavg))
     np.save(fname+'_glob_acc_kd.npy', np.array(exp_glob_acc_kd))
-    #np.load(fname+'_glob_acc_wavg.npy')
     return

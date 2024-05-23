@@ -66,14 +66,10 @@ def main_fedhd(args):
     print(f'fracs: {fracs}')
     print(f'Data ratios: {args.data_ratios}')
     print(f'Task Weights: {args.task_weights}')
-    #print(f'Type of Task Weights: {type(args.task_weights)}')
-    #print(f'Type of Task Weights: {type(args.task_weights[0][0])}')
     
     if args.nlp: 
         public_ds = nlp_dataset.get_public_ds(args)
         train_ds_global, val_ds_global, test_ds_global = nlp_dataset.get_train_val_test_ds(args)
-        #val_ds_global, test_ds_global = split_test_val(len(train_ds_global)+len(test_ds_global), 
-        #                                               test_ds_global, args.nlp)
 
         test_dl_global = DataLoader(dataset=test_ds_global, batch_size=128, shuffle=False, drop_last=False)
 
@@ -94,8 +90,7 @@ def main_fedhd(args):
         get_partitions_customD(train_ds_global, test_ds_global, args)
 
     Y_train = np.array(train_ds_global.target) if not args.nlp else np.array(train_ds_global['labels'])
-    #partitions_train, partitions_test, partitions_train_stat, partitions_test_stat = get_partitions(num_users, train_ds_global, test_ds_global, args)
-
+    
     print('-'*40)
     ################################### build model
     users_model = []
@@ -118,10 +113,6 @@ def main_fedhd(args):
         for cn, mod in enumerate(net_glob): 
             mod.load_state_dict(initial_state_dict[cn])
         
-    #print('-'*40)
-    #print(net_glob)
-    #print('')
-    
     num_params_list = []
     for cn, mod in enumerate(net_glob): 
         print(f'Model No {cn+1}')
@@ -133,9 +124,6 @@ def main_fedhd(args):
         print(f'total params {total}')
         print('-'*40)
         
-    #print(num_params_list)
-    #for cn in range(len(num_users)):
-    #    scale = [num_params_list[i]/num_params_list[cn] for i in range(len(num_users))]
     ################################# Initializing Clients
     print('-'*40)
     print('Initializing Clients')
@@ -199,7 +187,6 @@ def main_fedhd(args):
     start = time.time()
     
     loss_train = []
-    #clients_local_acc = {i:{j:[] for j in range(num_users[i])} for i in range(len(num_users))}
     w_locals, loss_locals = [], []
     glob_acc_wavg = [[] for _ in range(len(num_users))]
     glob_acc_kd = [[] for _ in range(len(num_users))]
@@ -224,7 +211,6 @@ def main_fedhd(args):
                 clients[cn][idx].set_state_dict(copy.deepcopy(w_glob[cn]))
 
                 loss = clients[cn][idx].train()
-                #loss = 0.1 # DEBUGGING PURPOSE
                 loss_locals.append(copy.deepcopy(loss))
         
         e_time = time.time()
@@ -256,7 +242,6 @@ def main_fedhd(args):
             logits_locals = []
             for idx in idxs_users[cn]:
                 logits_locals.append(clients[cn][idx].inference(public_ds))
-                #logits_locals.append(torch.zeros((len(public_ds),num_labels), dtype=float))
             avg_logits_list.append(torch.mean(torch.stack(logits_locals), dim=0))
         avg_logits_list = torch.stack(avg_logits_list)
             
@@ -265,7 +250,6 @@ def main_fedhd(args):
         self_logits_list = []
         for cn in range(len(num_users)):
             self_logits_list.append(inference(public_ds, net_glob[cn], args))
-            #self_logits_list.append(torch.zeros((len(public_ds),num_labels), dtype=float))
         self_logits_list = torch.stack(self_logits_list)
             
         public_ds.set_self_logits(self_logits_list)
@@ -273,16 +257,6 @@ def main_fedhd(args):
         e_time = time.time()
         print(f'Inference & Logit Avg done: {e_time-s_time:.2f}')
         ###### Inference ######
-        # scale_list = []
-        # for cn in range(len(num_users)):
-        #     #scale = [num_params_list[i]/num_params_list[cn] for i in range(len(num_users))]
-        #     #scale = [num_params_list[i]/(sum(num_params_list)) for i in range(len(num_users))]
-        #     scale = [num_params_list[i]/1e6 for i in range(len(num_users))]
-        #     scale = torch.Tensor(scale).float()
-        #     TT = args.adaptive_weight_T[cn]
-        #     scale = F.softmax(scale/TT, dim=-1)
-        #     scale_list.append(scale)
-        # print(f'Scale: {scale_list}, Adaptive Weight T: {args.adaptive_weight_T}')
         ##### Global Model KD #####
         public_dl = torch.utils.data.DataLoader(public_ds, batch_size=32, shuffle=True, drop_last=False)
         kl_criterion = nn.KLDivLoss(reduction="batchmean")
@@ -334,11 +308,11 @@ def main_fedhd(args):
                             loss = (T**2) * loss_kd + A_self[cn]*(T_self**2)*loss_self_kd
                         
                         if MIXED_PRECISION: 
-                            scaler.scale(loss).backward()#retain_graph=True)
+                            scaler.scale(loss).backward()
                             scaler.step(optimizer)
                             scaler.update()
                         else:     
-                            loss.backward()#retain_graph=True)
+                            loss.backward()
                             optimizer.step()
 
                 torch.cuda.empty_cache()
@@ -413,7 +387,6 @@ def main_fedhd(args):
                     net_glob[cn].load_state_dict(tmp_w_glob)
                     acc_kd = eval_test(net_glob[cn], args, val_dl_global)
                     acc_candidates.append(acc_kd)
-                    #print(f'candidate {i}: {np.round(lamb, 4)}, -- {acc_kd:.2f}')
                 
                 max_ind = acc_candidates.index(max(acc_candidates))
                 print(f'Best candidate: {np.round(candidates[max_ind], 4)}, accuracy: {acc_candidates[max_ind]:.2f}')
@@ -421,8 +394,7 @@ def main_fedhd(args):
 
             tmp_w_glob = copy.deepcopy(w_glob[cn])
             for key in tmp_w_glob.keys():
-                wl = args.task_weights[cn]
-                #assert np.isclose(sum(wl), 1), "The sum of the list elements is not close to 1"                
+                wl = args.task_weights[cn]             
 
                 example_tensor = next(iter(task_vectors[0].values()))
                 wl = torch.tensor(args.task_weights[cn], dtype=example_tensor.dtype, device=example_tensor.device)
@@ -434,7 +406,6 @@ def main_fedhd(args):
                 weighted_sum_tensors = weighted_sum_tensors.type_as(tmp_w_glob[key])
                 tmp_w_glob[key] = tmp_w_glob[key] + weighted_sum_tensors
 
-            #w_glob[cn] = copy.deepcopy(net_glob[cn].state_dict())
             new_w_glob.append(copy.deepcopy(tmp_w_glob))
             net_glob[cn].load_state_dict(copy.deepcopy(new_w_glob[cn]))
             acc_kd = eval_test(net_glob[cn], args, test_dl_global)
@@ -452,40 +423,9 @@ def main_fedhd(args):
             template = "--[Cluster {:.1f}]: {}, Global Acc Wavg: {:.2f}, After KD: {:.2f}, Best: {:.2f}"
             print(template.format(cn, archs[cn], glob_acc_wavg[cn][-1], glob_acc_kd[cn][-1], 
                                 np.max(glob_acc_kd[cn])))
-        #print_flag = False
-        ## if iteration+1 in [int(0.5*args.rounds), int(0.8*args.rounds)]:
-        ##     print_flag = True
-#
-        #if print_flag:
-        #    print('*'*25)
-        #    print(f'Check Point @ Round {iteration+1} --------- {int((iteration+1)/args.rounds*100)}% Completed')
-        #    temp_acc = []
-        #    temp_best_acc = []
-        #    for cn in range(len(num_users)):
-        #        for k in range(num_users[cn]):
-        #            sys.stdout.flush()
-        #            loss, acc = clients[cn][k].eval_test()
-        #            clients_local_acc[cn][k].append(acc)
-        #            temp_acc.append(clients_local_acc[cn][k][-1])
-        #            temp_best_acc.append(np.max(clients_local_acc[cn][k]))
-#
-        #            template = ("Client {:3d}, current_acc {:3.2f}, best_acc {:3.2f}")
-        #            print(template.format(k, clients_local_acc[cn][k][-1], np.max(clients_local_acc[cn][k])))
-#
-        #    #print('*'*25)
-        #    template = ("-- Avg Local Acc: {:3.2f}")
-        #    print(template.format(np.mean(temp_acc)))
-        #    template = ("-- Avg Best Local Acc: {:3.2f}")
-        #    print(template.format(np.mean(temp_best_acc)))
-        #    print('*'*25)
 
         loss_train.append(loss_avg)
-
-        ## clear the placeholders for the next round
         loss_locals.clear()
-
-        ## calling garbage collector
-        #gc.collect()
         iter_end_time = time.time()
 
         print(f'Round {iteration+1} Time: {(iter_end_time - iter_start_time)/60:.1f} mins')
@@ -493,23 +433,6 @@ def main_fedhd(args):
     end = time.time()
     duration = end-start
     print('-'*40)
-    ############################### Testing Local Results
-    #print('*'*25)
-    #print('---- Testing Final Local Results ----')
-    #temp_acc = [[] for _ in range(len(num_users))]
-    #temp_best_acc = [[] for _ in range(len(num_users))]
-    #for cn in range(len(num_users)):
-    #    for k in range(num_users[cn]):
-    #        sys.stdout.flush()
-    #        loss, acc = clients[cn][k].eval_test()
-    #        clients_local_acc[cn][k].append(acc)
-    #        temp_acc[cn].append(clients_local_acc[cn][k][-1].numpy())
-    #        temp_best_acc[cn].append(np.max(clients_local_acc[cn][k]))
-#
-    #        template = ("Client {:3d}, Final_acc {:3.2f}, best_acc {:3.2f} \n")
-    #        print(template.format(k, clients_local_acc[cn][k][-1], np.max(clients_local_acc[cn][k])))
-#
-    #print('*'*25)
     ############################### FedAvg Final Results
     print('-'*40)
     print('FINAL RESULTS')
@@ -522,13 +445,6 @@ def main_fedhd(args):
 
         template = "-- Global Best Acc: {:.2f}, After: {:.2f}"
         print(template.format(np.max(glob_acc_wavg[cn]), np.max(glob_acc_kd[cn])))
-
-        #template = ("-- Avg Local Acc: {:3.2f}")
-        #print(template.format(np.mean(temp_acc[cn])))
-#
-        #template = ("-- Avg Best Local Acc: {:3.2f}")
-        #print(template.format(np.mean(temp_best_acc[cn])))
-
         print(f'-- FL Time: {duration/60:.2f} minutes')
     print('-'*40)
     
@@ -540,14 +456,6 @@ def main_fedhd(args):
         kk = int(num_users[cn]*fracs[cn])
         avg_final_glob.append(np.mean(glob_acc_kd[cn][-kk:]))
         best_glob.append(np.max(glob_acc_kd[cn]))
-    
-    #temp_acc = [item for sublist in temp_acc for item in sublist]
-    #temp_best_acc = [item for sublist in temp_best_acc for item in sublist]
-    #print(temp_acc)
-    #print(temp_best_acc)
-    #
-    #avg_final_local = np.mean(temp_acc)
-    #avg_best_local = np.mean(temp_best_acc)
 
     return (glob_acc_wavg, glob_acc_kd, final_glob, avg_final_glob, best_glob, duration)
 
@@ -561,8 +469,6 @@ def run_fedhd(args, fname):
     exp_final_glob=[]
     exp_avg_final_glob=[]
     exp_best_glob=[]
-    #exp_avg_final_local=[]
-    #exp_avg_best_local=[]
     exp_fl_time=[]
 
     torch.backends.cudnn.benchmark = True
@@ -582,8 +488,6 @@ def run_fedhd(args, fname):
         exp_final_glob.append(final_glob)
         exp_avg_final_glob.append(avg_final_glob)
         exp_best_glob.append(best_glob)
-        #exp_avg_final_local.append(avg_final_local)
-        #exp_avg_best_local.append(avg_best_local)
         exp_fl_time.append(duration/60)
 
         print('*'*40)
@@ -601,12 +505,6 @@ def run_fedhd(args, fname):
         template = "-- Global Best Acc: {}"
         r = [float(f'{item:.2f}') for item in exp_best_glob[-1]]
         print(template.format(r))
-
-        #template = ("-- Avg Final Local Acc: {:3.2f}")
-        #print(template.format(exp_avg_final_local[-1]))
-#
-        #template = ("-- Avg Best Local Acc: {:3.2f}")
-        #print(template.format(exp_avg_best_local[-1]))
 
         print(f'-- FL Time: {exp_fl_time[-1]:.2f} minutes')
 
@@ -628,12 +526,6 @@ def run_fedhd(args, fname):
     r1 = [float(f'{item:.2f}') for item in np.mean(exp_best_glob, axis=0)]
     r2 = [float(f'{item:.2f}') for item in np.std(exp_best_glob, axis=0)]
     print(template.format(r1, r2))
-
-    #template = ("-- Avg Final Local Acc: {:3.2f} +- {:.2f}")
-    #print(template.format(np.mean(exp_avg_final_local), np.std(exp_avg_final_local)))
-#
-    #template = ("-- Avg Best Local Acc: {:3.2f} +- {:.2f}")
-    #print(template.format(np.mean(exp_avg_best_local), np.std(exp_avg_best_local)))
 
     print(f'-- FL Time: {np.mean(exp_fl_time):.2f} minutes')
 
@@ -657,12 +549,6 @@ def run_fedhd(args, fname):
         r2 = [float(f'{item:.2f}') for item in np.std(exp_best_glob, axis=0)]
         print(template.format(r1, r2), file=text_file)
 
-        #template = ("-- Avg Final Local Acc: {:3.2f} +- {:.2f}")
-        #print(template.format(np.mean(exp_avg_final_local), np.std(exp_avg_final_local)), file=text_file)
-#
-        #template = ("-- Avg Best Local Acc: {:3.2f} +- {:.2f}")
-        #print(template.format(np.mean(exp_avg_best_local), np.std(exp_avg_best_local)), file=text_file)
-
         print(f'-- FL Time: {np.mean(exp_fl_time):.2f} minutes', file=text_file)
 
         print('*'*40)
@@ -670,5 +556,4 @@ def run_fedhd(args, fname):
     print('Saving Global Accuracy')
     np.save(fname+'_glob_acc_wavg.npy', np.array(exp_glob_acc_wavg))
     np.save(fname+'_glob_acc_kd.npy', np.array(exp_glob_acc_kd))
-    #np.load(fname+'_glob_acc_wavg.npy')
     return
