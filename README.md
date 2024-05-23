@@ -2,11 +2,6 @@
 
 <a name="readme-top"></a>
 
-
-Code for [Towards Diverse Device Heterogeneous Federated Learning via Task Arithmetic Knowledge Integration](https://openreview.net/forum?id=y6JotynERr). 
-
-
-
 ### Prerequisites
 
 requirements.txt lists the packages used. 
